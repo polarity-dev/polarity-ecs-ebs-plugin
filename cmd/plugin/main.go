@@ -25,26 +25,18 @@ type MountResponse struct {
 }
 
 func main() {
+  log.SetOutput(os.Stdout)
+
 	log.Println("Setting up docker plugin...")
 
 	sockPath := os.Getenv("SOCK_PATH")
 	if sockPath == "" {
-		sockPath = "/var/run/docker/plugins/polarity-ebs.sock"
+		sockPath = "/run/docker/plugins/pl-ebs.sock"
 	}
 
 	log.Println("Sock path is " + sockPath)
 
-	os.Remove(sockPath)
-
-	log.Println("Retrieving instance metadata...")
-	meta, err := internal.GetInstanceMetadata()
-	if err != nil {
-		log.Fatalf("Failed to get instance metadata: %v", err)
-	}
-
-	log.Printf("Instance Metadata: Region=%s, AvailabilityZone=%s, InstanceID=%s", meta.Region, meta.AvailabilityZone, meta.InstanceID)
-
-	log.SetOutput(os.Stdout)
+	// os.Remove(sockPath)
 
 	log.Println("Starting Docker Plugin...")
 
@@ -55,6 +47,15 @@ func main() {
 		log.Fatalf("Failed to listen on socket: %v", err)
 	}
 	defer listener.Close()
+
+
+  log.Println("Retrieving instance metadata...")
+	meta, err := internal.GetInstanceMetadata()
+	if err != nil {
+		log.Fatalf("Failed to get instance metadata: %v", err)
+	}
+
+	log.Printf("Instance Metadata: Region=%s, AvailabilityZone=%s, InstanceID=%s", meta.Region, meta.AvailabilityZone, meta.InstanceID)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{ "status": "ok", "timestamp": "` + time.Now().Format(time.RFC3339) + `" }`))
@@ -400,5 +401,8 @@ func main() {
 		}
 	})
 
-	log.Fatal(http.Serve(listener, mux))
+	log.Println("Plugin HTTP server is starting on", sockPath)
+	if err := http.Serve(listener, mux); err != nil {
+		log.Fatalf("Failed to serve plugin API: %v", err)
+	}
 }

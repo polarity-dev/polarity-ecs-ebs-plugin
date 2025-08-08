@@ -1,7 +1,8 @@
 PLUGIN_NAME=polarity-ebs-plugin
 BINARY_NAME=polarity-ebs-plugin
-SOCK_NAME=polarity-ebs
+SOCK_NAME=pl-ebs
 DEV_SOCK_PATH=./$(SOCK_NAME).sock
+SOCK_PATH=/run/docker/plugins/$(SOCK_NAME).sock
 BUILD_DIR=build
 ROOTFS_DIR=$(BUILD_DIR)/rootfs
 BIN_DIR=$(ROOTFS_DIR)/bin
@@ -10,7 +11,7 @@ BIN_DIR=$(ROOTFS_DIR)/bin
 
 build: clean generate-config
 	@echo "Building Go binary..."
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/plugin
+	go clean && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/plugin
 
 generate-config:
 	@echo "Generating config.json..."
@@ -31,7 +32,7 @@ clean:
 	docker plugin disable polarity-ebs-plugin:latest || true
 	docker plugin rm polarity-ebs-plugin:latest || true
 	rm -rf $(BUILD_DIR) $(PLUGIN_NAME).tar plugin.log
-	sudo rm /run/docker/plugins/$(SOCK_NAME).sock || true
+	sudo rm $(SOCK_PATH) || true
 
 dev:
 	@echo "Running with go run and default params..."
