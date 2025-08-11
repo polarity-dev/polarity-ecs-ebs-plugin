@@ -178,7 +178,7 @@ func main() {
       log.Printf("Successfully attached volume %s: %v, waiting to be in-use state", req.Name, attachRes)
 
       internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateInUse)
-    } else {
+    } else if vol.State != types.VolumeStateInUse {
       log.Printf("Volume %s is in an unhandled state: %s", req.Name, vol.State)
     }
 

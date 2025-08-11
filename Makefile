@@ -23,7 +23,7 @@ plugin: build
 	docker plugin create polarity-ebs-plugin:latest ./build
 	docker plugin enable polarity-ebs-plugin:latest
 
-tar: build
+tar: docker-build
 	@echo "Creating plugin tarball..."
 	tar -cvf $(PLUGIN_NAME).tar -C $(BUILD_DIR) .
 
@@ -41,4 +41,9 @@ dev:
 health-check:
 	@echo "Checking health..."
 	curl -H "Content-Type: application/json" -XPOST -d "{}" --unix-socket $(DEV_SOCK_PATH) http:/localhost/health
-
+docker-build: clean generate-config
+	@echo "Building Docker image..."
+	mkdir -p ./build/rootfs && docker build -t $(PLUGIN_NAME) .
+	DOCKER_ID=$$(docker create $(PLUGIN_NAME)); \
+	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
+	docker rm $$DOCKER_ID
