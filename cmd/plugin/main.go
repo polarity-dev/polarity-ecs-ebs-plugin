@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
+  // "io"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/polarity-dev/polarity-ecs-ebs-plugin/internal"
@@ -26,7 +27,7 @@ type MountResponse struct {
 
 func main() {
 
-  // logFile, err := os.OpenFile("/var/log/plugin.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+  // logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	// if err != nil {
 	// 	log.Fatalf("Failed to open log file: %v", err)
 	// }
@@ -36,7 +37,8 @@ func main() {
 	// multiWriter := io.MultiWriter(os.Stdout, logFile)
 
 	// Imposta il logger per scrivere su entrambi
-	log.SetOutput(os.Stdout)
+	// log.SetOutput(multiWriter)
+  log.SetOutput(os.Stdout)
 
 	log.Println("Setting up docker plugin...")
 

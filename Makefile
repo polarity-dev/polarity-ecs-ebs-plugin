@@ -31,13 +31,16 @@ clean:
 	@echo "Cleaning up..."
 	docker plugin disable polarity-ecs-ebs-plugin:latest || true
 	docker plugin rm polarity-ecs-ebs-plugin:latest || true
-	rm -rf $(BUILD_DIR) $(PLUGIN_NAME).tar plugin.log
+	rm -rf $(BUILD_DIR) *.tar plugin.log
 	sudo rm $(SOCK_PATH) || true
-
+buildx-amd64: clean generate-config
+	docker buildx build --platform linux/amd64 -t plx86 --load .
+	DOCKER_ID=$$(docker create plx86); \
+	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
+	docker rm $$DOCKER_ID
 dev:
 	@echo "Running with go run and default params..."
 	SOCK_PATH=$(DEV_SOCK_PATH) REGION=empty AVAILABILITY_ZONE=empty INSTANCE_ID=empty go run cmd/plugin/main.go
-
 health-check:
 	@echo "Checking health..."
 	curl -H "Content-Type: application/json" -XPOST -d "{}" --unix-socket $(DEV_SOCK_PATH) http:/localhost/health
@@ -47,4 +50,5 @@ docker-build: clean generate-config
 	DOCKER_ID=$$(docker create $(PLUGIN_NAME)); \
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
 	docker rm $$DOCKER_ID
-
+tar-amd64: buildx-amd64
+	@echo "Creating plugin tarball for amd64..." && tar -cvf $(PLUGIN_NAME)-amd64.tar -C $(BUILD_DIR) .
