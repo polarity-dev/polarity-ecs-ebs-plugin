@@ -3,7 +3,7 @@ name: Build plugin
 on:
   push:
     branches:
-      - alex-github-action # TODO: main
+      - main
 
 jobs:
   plugin-amd64:
