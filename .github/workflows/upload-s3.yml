@@ -1,12 +1,12 @@
-name: Build and export Docker container FS
+name: Build plugin
 
-on:
-  push:
-    tags:
-      - '*'
+# on:
+#   push:
+#     branches:
+#       - main
 
 jobs:
-  export-amd64:
+  plugin-amd64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -39,14 +39,15 @@ jobs:
         run: |
           tar -cvf polarity-ecs-ebs-plugin.amd64.tar -C ./build .
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: polarity-ecs-ebs-plugin.amd64.tar
+      - name: Upload tarball to S3
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar s3://your-bucket-name/releases/${{ github.sha }}/amd64/polarity-ecs-ebs-plugin.tar
+          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar s3://your-bucket-name/releases/latest/amd64/polarity-ecs-ebs-plugin.tar
 
-  export-arm64:
+  plugin-arm64:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -79,9 +80,10 @@ jobs:
         run: |
           tar -cvf polarity-ecs-ebs-plugin.arm64.tar -C ./build .
 
-      - name: Upload to release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: polarity-ecs-ebs-plugin.arm64.tar
+      - name: Upload tarball to S3
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar s3://your-bucket-name/releases/${{ github.sha }}/arm64/polarity-ecs-ebs-plugin.tar
+          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar s3://your-bucket-name/releases/latest/arm64/polarity-ecs-ebs-plugin.tar

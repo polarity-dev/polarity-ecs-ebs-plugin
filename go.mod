@@ -1,4 +1,4 @@
-module github.com/polarity-dev/polarity-ebs-plugin
+module github.com/polarity-dev/polarity-ecs-ebs-plugin
 
 go 1.24.5
 

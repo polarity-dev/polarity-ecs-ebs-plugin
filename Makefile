@@ -1,5 +1,5 @@
-PLUGIN_NAME=polarity-ebs-plugin
-BINARY_NAME=polarity-ebs-plugin
+PLUGIN_NAME=polarity-ecs-ebs-plugin
+BINARY_NAME=polarity-ecs-ebs-plugin
 SOCK_NAME=pl-ebs
 DEV_SOCK_PATH=./$(SOCK_NAME).sock
 SOCK_PATH=/run/docker/plugins/$(SOCK_NAME).sock
@@ -20,8 +20,8 @@ generate-config:
 
 plugin: build
 	@echo "Creating plugin"
-	docker plugin create polarity-ebs-plugin:latest ./build
-	docker plugin enable polarity-ebs-plugin:latest
+	docker plugin create polarity-ecs-ebs-plugin:latest ./build
+	docker plugin enable polarity-ecs-ebs-plugin:latest
 
 tar: docker-build
 	@echo "Creating plugin tarball..."
@@ -29,8 +29,8 @@ tar: docker-build
 
 clean:
 	@echo "Cleaning up..."
-	docker plugin disable polarity-ebs-plugin:latest || true
-	docker plugin rm polarity-ebs-plugin:latest || true
+	docker plugin disable polarity-ecs-ebs-plugin:latest || true
+	docker plugin rm polarity-ecs-ebs-plugin:latest || true
 	rm -rf $(BUILD_DIR) $(PLUGIN_NAME).tar plugin.log
 	sudo rm $(SOCK_PATH) || true
 
@@ -47,3 +47,4 @@ docker-build: clean generate-config
 	DOCKER_ID=$$(docker create $(PLUGIN_NAME)); \
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
 	docker rm $$DOCKER_ID
+

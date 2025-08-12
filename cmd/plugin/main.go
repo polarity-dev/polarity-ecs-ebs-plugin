@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
-	"github.com/polarity-dev/polarity-ebs-plugin/internal"
+	"github.com/polarity-dev/polarity-ecs-ebs-plugin/internal"
 )
 
 type ErrorResponse struct {
@@ -20,12 +20,12 @@ type ErrorResponse struct {
 }
 
 type MountResponse struct {
-	Err string `json:"Err,omitempty"`
-  MountPoint string `json:"Mountpoint"`
+	Err        string `json:"Err,omitempty"`
+	MountPoint string `json:"Mountpoint"`
 }
 
 func main() {
-  log.SetOutput(os.Stdout)
+	log.SetOutput(os.Stdout)
 
 	log.Println("Setting up docker plugin...")
 
@@ -48,8 +48,7 @@ func main() {
 	}
 	defer listener.Close()
 
-
-  log.Println("Retrieving instance metadata...")
+	log.Println("Retrieving instance metadata...")
 	meta, err := internal.GetInstanceMetadata()
 	if err != nil {
 		log.Fatalf("Failed to get instance metadata: %v", err)
@@ -126,13 +125,13 @@ func main() {
 
 		log.Printf("Received Mount Request: %+v", req)
 
-    if req.Name == "" {
+		if req.Name == "" {
 			response := MountResponse{Err: "Name cannot be empty or null", MountPoint: ""}
 			json.NewEncoder(w).Encode(response)
 			return
 		}
 
-    client, err := internal.InitClient(r.Context(), meta.Region)
+		client, err := internal.InitClient(r.Context(), meta.Region)
 		if err != nil {
 			response := MountResponse{Err: fmt.Sprintf("Failed to initialize EC2 client: %v", err), MountPoint: ""}
 			json.NewEncoder(w).Encode(response)
@@ -146,48 +145,48 @@ func main() {
 			return
 		}
 
-    // attach the volume using aws sdk
-    if (vol.State == types.VolumeStateInUse && vol.Attachments[0].InstanceId != nil && *vol.Attachments[0].InstanceId != meta.InstanceID) {
-      log.Printf("Volume %s is in-use by another instance (%s), detaching...", req.Name, *vol.Attachments[0].InstanceId)
+		// attach the volume using aws sdk
+		if vol.State == types.VolumeStateInUse && vol.Attachments[0].InstanceId != nil && *vol.Attachments[0].InstanceId != meta.InstanceID {
+			log.Printf("Volume %s is in-use by another instance (%s), detaching...", req.Name, *vol.Attachments[0].InstanceId)
 
-      _, err := internal.DetachVolume(r.Context(), client, req.Name, *vol.Attachments[0].InstanceId)
-      if err != nil {
-        response := MountResponse{Err: fmt.Sprintf("Failed to detach volume: %v", err), MountPoint: ""}
-        json.NewEncoder(w).Encode(response)
-        return
-      }
+			_, err := internal.DetachVolume(r.Context(), client, req.Name, *vol.Attachments[0].InstanceId)
+			if err != nil {
+				response := MountResponse{Err: fmt.Sprintf("Failed to detach volume: %v", err), MountPoint: ""}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
 
-      log.Printf("Successfully detached volume %s, waiting to be available", req.Name)
-      // NOTE: This overrides the previous volume state check
-      vol, err = internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateAvailable)
-      if err != nil {
-        response := MountResponse{Err: fmt.Sprintf("Failed to wait for volume to be available: %v", err), MountPoint: ""}
-        json.NewEncoder(w).Encode(response)
-        return
-      }
-    }
+			log.Printf("Successfully detached volume %s, waiting to be available", req.Name)
+			// NOTE: This overrides the previous volume state check
+			vol, err = internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateAvailable)
+			if err != nil {
+				response := MountResponse{Err: fmt.Sprintf("Failed to wait for volume to be available: %v", err), MountPoint: ""}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+		}
 
-    if (vol.State == types.VolumeStateAvailable) {
-      log.Printf("Volume %s is available, attaching...", req.Name)
-      attachRes, err := internal.AttachVolume(r.Context(), client, req.Name, meta.InstanceID)
-      if err != nil {
-        response := MountResponse{Err: fmt.Sprintf("Failed to attach volume: %v", err), MountPoint: ""}
-        json.NewEncoder(w).Encode(response)
-        return
-      }
-      log.Printf("Successfully attached volume %s: %v, waiting to be in-use state", req.Name, attachRes)
+		if vol.State == types.VolumeStateAvailable {
+			log.Printf("Volume %s is available, attaching...", req.Name)
+			attachRes, err := internal.AttachVolume(r.Context(), client, req.Name, meta.InstanceID)
+			if err != nil {
+				response := MountResponse{Err: fmt.Sprintf("Failed to attach volume: %v", err), MountPoint: ""}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+			log.Printf("Successfully attached volume %s: %v, waiting to be in-use state", req.Name, attachRes)
 
-      internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateInUse)
-    } else if vol.State != types.VolumeStateInUse {
-      log.Printf("Volume %s is in an unhandled state: %s", req.Name, vol.State)
-    }
+			internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateInUse)
+		} else if vol.State != types.VolumeStateInUse {
+			log.Printf("Volume %s is in an unhandled state: %s", req.Name, vol.State)
+		}
 
-    mountErr := internal.Mount(req.Name)
-    if mountErr != nil {
-      response := MountResponse{Err: fmt.Sprintf("Failed to mount volume: %v", mountErr), MountPoint: ""}
-      json.NewEncoder(w).Encode(response)
-      return
-    }
+		mountErr := internal.Mount(req.Name)
+		if mountErr != nil {
+			response := MountResponse{Err: fmt.Sprintf("Failed to mount volume: %v", mountErr), MountPoint: ""}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
 
 		response := MountResponse{Err: "", MountPoint: filepath.Join("/mnt", req.Name)}
 		json.NewEncoder(w).Encode(response)
