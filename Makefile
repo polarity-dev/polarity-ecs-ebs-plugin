@@ -15,7 +15,7 @@ build: clean generate-config
 
 generate-config:
 	@echo "Generating config.json..."
-	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/rootfs
 	@echo '{"description":"Polarity EBS plugin for ECS","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
 
 plugin: build

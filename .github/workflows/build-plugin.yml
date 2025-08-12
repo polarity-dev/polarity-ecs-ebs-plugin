@@ -1,0 +1,87 @@
+name: Build and export Docker container FS
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  export-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: make configs
+        run: |
+          make generate-config
+
+      - name: Build amd64 image
+        run: |
+          docker build \
+            --platform linux/amd64 \
+            --build-arg GO_ARCH=amd64 \
+            -t pl:amd64 .
+
+      - name: Export container FS
+        run: |
+          id=$(docker create pl:amd64)
+          docker export "$id" | tar -x -C ./build/rootfs
+          docker rm "$id"
+
+      - name: Create tarball
+        run: |
+          tar -cvf polarity-ecs-ebs-plugin.amd64.tar -C ./build .
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: polarity-ecs-ebs-plugin.amd64.tar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  export-arm64:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: make configs
+        run: |
+          make generate-config
+
+      - name: Build arm64 image
+        run: |
+          docker build \
+            --platform linux/arm64 \
+            --build-arg GO_ARCH=arm64 \
+            -t pl:arm64 .
+
+      - name: Export container FS
+        run: |
+          id=$(docker create pl:arm64)
+          docker export "$id" | tar -x -C ./build/rootfs
+          docker rm "$id"
+
+      - name: Create tarball
+        run: |
+          tar -cvf polarity-ecs-ebs-plugin.arm64.tar -C ./build .
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: polarity-ecs-ebs-plugin.arm64.tar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
