@@ -26,9 +26,10 @@ type MountResponse struct {
 }
 
 var Debug string = "false"
+var CommitHash string = "unknown"
 
 func main() {
-  log.Println("Starting Polarity EBS Plugin (debug=" + Debug + ")...")
+  log.Println("Starting Polarity EBS Plugin (debug=" + Debug + ", commit=" + CommitHash + ")...")
   if Debug == "true" {
     logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
     if err != nil {
@@ -71,7 +72,7 @@ func main() {
 	log.Printf("Instance Metadata: Region=%s, AvailabilityZone=%s, InstanceID=%s", meta.Region, meta.AvailabilityZone, meta.InstanceID)
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{ "status": "ok", "timestamp": "` + time.Now().Format(time.RFC3339) + `" }`))
+		w.Write([]byte(`{ "status": "ok", "timestamp": "` + time.Now().Format(time.RFC3339) + `", "commit": "` + CommitHash + `" }`))
 	})
 
 	mux.HandleFunc("/Plugin.Activate", func(w http.ResponseWriter, r *http.Request) {

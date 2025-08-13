@@ -37,7 +37,7 @@ jobs:
         run: go mod tidy
 
       - name: build all
-        run: make tar-amd64
+        run: make tar-amd64 COMMIT_HASH=$(echo "${GITHUB_SHA}" | cut -c1-7)
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
@@ -77,7 +77,7 @@ jobs:
         run: go mod tidy
 
       - name: build all
-        run: make tar-arm64
+        run: make tar-arm64 COMMIT_HASH=$(echo "${GITHUB_SHA}" | cut -c1-7)
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1

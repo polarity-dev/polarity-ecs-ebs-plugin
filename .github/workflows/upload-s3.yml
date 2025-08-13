@@ -40,7 +40,7 @@ jobs:
         run: go mod tidy
 
       - name: build all
-        run: make tar-amd64
+        run: make tar-amd64 COMMIT_HASH=$(echo "${GITHUB_SHA}" | cut -c1-7)
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -89,7 +89,7 @@ jobs:
         run: go mod tidy
 
       - name: build all
-        run: make tar-arm64
+        run: make tar-arm64 COMMIT_HASH=$(echo "${GITHUB_SHA}" | cut -c1-7)
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
