@@ -2,3 +2,4 @@ build/
 *.tar
 *.tar.gz
 *.sock
+dist/

@@ -8,7 +8,8 @@ docker run --rm -it -v <ebs-volume-id>:/data alpine
 ```
 When the container is started we call AWS to get `<ebs-volume-id>` informations, the volume is eventually detached from other EC2 and attached to the cluster.
 Then if the volume has no filesystem, it will be created using `mkfs.xfs`.
-Then the volume will be mounted in a location managed by docker and accessible from the mountpoint in the container
+Then the volume will be mounted in a location managed by docker and accessible from the mountpoint in the container.
+
 The volume needs to be in the same az as the EC2
 
 Here is an example of the plugin working with CloudFormation
@@ -30,12 +31,14 @@ Here is an example of the plugin working with CloudFormation
               Name: <ebs-volume-id>
 
 ```
-When the task is created the volume will be attached to the task
+When the task is created the volume will be attached to the task.
+
 In this case the plugin should already be installed in the host machine this can be done either using a custom AMI or in the EC2 user data.
 
 
 ## Installation
-Firstrly pick the correct release based on your system
+Firstrly pick the correct release based on your system.
+
 Install the plugin from `.tar.gz` release
 ```sh
 curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/<release_tag>/polarity-ecs-ebs-plugin.amd64.tar.gz # aws s3 cp <source> polarity-ecs-ebs-plugin.tar.gz

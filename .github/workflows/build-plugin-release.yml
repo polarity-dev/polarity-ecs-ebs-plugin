@@ -18,26 +18,26 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: make configs
-        run: |
-          make generate-config
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.5'
 
-      - name: Build amd64 image
-        run: |
-          docker build \
-            --platform linux/amd64 \
-            --build-arg GO_ARCH=amd64 \
-            -t pl:amd64 .
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-amd64-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-amd64-
 
-      - name: Export container FS
-        run: |
-          id=$(docker create pl:amd64)
-          docker export "$id" | tar -x -C ./build/rootfs
-          docker rm "$id"
+      - name: Install dependencies
+        run: go mod tidy
 
-      - name: Create tarball
-        run: |
-          tar -czf polarity-ecs-ebs-plugin.amd64.tar.gz -C ./build .
+      - name: build all
+        run: make tar-amd64
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
@@ -47,7 +47,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   plugin-arm64:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -58,26 +58,26 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: make configs
-        run: |
-          make generate-config
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.5'
 
-      - name: Build arm64 image
-        run: |
-          docker build \
-            --platform linux/arm64 \
-            --build-arg GO_ARCH=arm64 \
-            -t pl:arm64 .
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-arm64-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-arm64-
 
-      - name: Export container FS
-        run: |
-          id=$(docker create pl:arm64)
-          docker export "$id" | tar -x -C ./build/rootfs
-          docker rm "$id"
+      - name: Install dependencies
+        run: go mod tidy
 
-      - name: Create tarball
-        run: |
-          tar -czf polarity-ecs-ebs-plugin.arm64.tar.gz -C ./build .
+      - name: build all
+        run: make tar-arm64
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
