@@ -24,11 +24,11 @@ debug-generate-config: clean
 generate-config: clean
 	@echo "Generating config.json..."
 	mkdir -p $(BUILD_DIR)/rootfs
-	@echo '{"description":"Polarity EBS plugin for ECS v$$COMMIT_HASH","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
+	@echo '{"description":"Polarity EBS plugin for ECS v$COMMIT_HASH","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
 
 
 docker-build-amd64: generate-config
-	GOOS=linux GO_ARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$$COMMIT_HASH" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	GOOS=linux GO_ARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$COMMIT_HASH" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
 	docker buildx build --platform linux/amd64 -t plx86 --load .
 	DOCKER_ID=$$(docker create plx86); \
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
@@ -39,7 +39,7 @@ tar-amd64: docker-build-amd64
 
 docker-build-arm64: clean generate-config
 	@echo "Building Docker image..."
-	GOOS=linux GO_ARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$$COMMIT_HASH" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	GOOS=linux GO_ARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$COMMIT_HASH" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
 	mkdir -p ./build/rootfs
 	docker buildx build --platform linux/arm64 -t plarm64 --load .
 	DOCKER_ID=$$(docker create plarm64); \
