@@ -34,7 +34,8 @@ docker-build-amd64: generate-config
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
 	docker rm $$DOCKER_ID
 tar-amd64: docker-build-amd64
-	@echo "Creating plugin tarball for amd64..." && tar -czf $(PLUGIN_NAME)-amd64.tar.gz -C $(BUILD_DIR) .
+	@echo "Creating plugin tarball for amd64..."
+	tar -czf polarity-ecs-ebs-plugin.amd64.tar.gz -C build .
 
 docker-build-arm64: clean generate-config
 	@echo "Building Docker image..."
@@ -46,7 +47,7 @@ docker-build-arm64: clean generate-config
 	docker rm $$DOCKER_ID
 tar-arm64: docker-build-arm64
 	@echo "Creating plugin tarball..."
-	tar -czf $(PLUGIN_NAME).tar.gz -C $(BUILD_DIR) .
+	tar -czf polarity-ecs-ebs-plugin.arm64.tar.gz -C build .
 
 
 debug-build-amd64: debug-generate-config
