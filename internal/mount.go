@@ -2,10 +2,11 @@ package internal
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -28,44 +29,62 @@ func runCommand(cmdStr string, args ...string) (string, error) {
 	return strings.TrimSpace(out.String()), err
 }
 
-func findDeviceByVolumeID(volumeID string) (string, error) {
+func FindDeviceByVolumeID(volumeID string) (string, error) {
+	log.Println("Finding device for volumeID:", volumeID)
 	dataVolumeID := volumeID[4:]
-	for {
-		output, err := runCommand("nvme", "list", "-o", "json")
+	sysBlockPath := "/sys/block"
+
+	for attempt := 1; attempt <= 5; attempt++ {
+		entries, err := os.ReadDir(sysBlockPath)
 		if err != nil {
-			return "", fmt.Errorf("failed to run nvme list: %v", err)
+			return "", fmt.Errorf("failed to read %s: %v", sysBlockPath, err)
 		}
 
-		var nvmeList nvmeList
-		if err := json.Unmarshal([]byte(output), &nvmeList); err != nil {
-			return "", fmt.Errorf("failed to parse nvme list json: %v", err)
-		}
+		log.Printf("Attempt %d to find device for volumeID %s", attempt, dataVolumeID)
 
-		for _, device := range nvmeList.Devices {
-			if strings.Contains(device.SerialNumber, dataVolumeID) {
-				return strings.TrimPrefix(device.DevicePath, "/dev/"), nil
+		for _, e := range entries {
+			name := e.Name()
+			if !strings.HasPrefix(name, "nvme") {
+				continue
+			}
+
+			serialPath := filepath.Join(sysBlockPath, name, "device", "serial")
+			serialBytes, err := os.ReadFile(serialPath)
+			if err != nil {
+				continue
+			}
+
+			serial := (string(serialBytes))
+			if strings.Contains(serial, dataVolumeID) {
+				return strings.TrimPrefix(name, "/dev/"), nil
 			}
 		}
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Duration(attempt) * time.Second)
 	}
+
+	return "", fmt.Errorf("device with volumeID %s not found after 5 attempts", volumeID)
 }
 
-func getFilesystem(device string) (string, error) {
-	output, err := runCommand("lsblk", "-f")
+func GetFilesystem(device string) (string, error) {
+  if !strings.HasPrefix(device, "/dev") {
+    device = "/dev/" + device
+  }
+	output, err := runCommand("blkid", device)
 	if err != nil {
-		return "", fmt.Errorf("failed to run lsblk: %v", err)
+		return "", fmt.Errorf("failed to run blkid on %s: %v", device, err)
 	}
 
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == device {
-			return fields[1], nil
+	fsType := ""
+	for part := range strings.FieldsSeq(output) {
+		if strings.HasPrefix(part, "TYPE=") {
+			fsType = strings.Trim(part[len("TYPE="):], `"`)
+			break
 		}
 	}
 
-	return "", nil
+	log.Printf("Device %s has filesystem type: %s", device, fsType)
+	return fsType, nil
 }
 
 func getMountpoint(device string) (string, error) {
@@ -86,12 +105,12 @@ func getMountpoint(device string) (string, error) {
 }
 
 func Mount(volumeID string) error {
-	device, err := findDeviceByVolumeID(volumeID)
+	device, err := FindDeviceByVolumeID(volumeID)
 	if err != nil {
 		return fmt.Errorf("error finding device: %v", err)
 	}
 
-	filesystem, err := getFilesystem(device)
+	filesystem, err := GetFilesystem(device)
 	if err != nil {
 		return fmt.Errorf("error getting filesystem: %v", err)
 	}

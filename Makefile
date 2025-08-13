@@ -7,17 +7,11 @@ BUILD_DIR=build
 ROOTFS_DIR=$(BUILD_DIR)/rootfs
 BIN_DIR=$(ROOTFS_DIR)/bin
 
-.PHONY: all tar clean build generate-config create-plugin
+.PHONY: all tar clean build
 
 build: clean generate-config
 	@echo "Building Go binary..."
 	go clean && GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/plugin
-
-generate-config:
-	@echo "Generating config.json..."
-	mkdir -p $(BUILD_DIR)/rootfs
-	@echo '{"description":"Polarity EBS plugin for ECS","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
-
 plugin: build
 	@echo "Creating plugin"
 	docker plugin create polarity-ecs-ebs-plugin:latest ./build
@@ -25,14 +19,14 @@ plugin: build
 
 tar: docker-build
 	@echo "Creating plugin tarball..."
-	tar -cvf $(PLUGIN_NAME).tar -C $(BUILD_DIR) .
+	tar -czf $(PLUGIN_NAME).tar.gz -C $(BUILD_DIR) .
 
 clean:
 	@echo "Cleaning up..."
 	docker plugin disable polarity-ecs-ebs-plugin:latest || true
 	docker plugin rm polarity-ecs-ebs-plugin:latest || true
-	rm -rf $(BUILD_DIR) *.tar plugin.log
-	sudo rm $(SOCK_PATH) || true
+	rm -rf $(BUILD_DIR) *.tar.gz *.tar plugin.log
+# 	sudo rm $(SOCK_PATH) || true
 buildx-amd64: clean generate-config
 	docker buildx build --platform linux/amd64 -t plx86 --load .
 	DOCKER_ID=$$(docker create plx86); \
@@ -51,4 +45,20 @@ docker-build: clean generate-config
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
 	docker rm $$DOCKER_ID
 tar-amd64: buildx-amd64
-	@echo "Creating plugin tarball for amd64..." && tar -cvf $(PLUGIN_NAME)-amd64.tar -C $(BUILD_DIR) .
+	@echo "Creating plugin tarball for amd64..." && tar -czf $(PLUGIN_NAME)-amd64.tar.gz -C $(BUILD_DIR) .
+debug-tar-amd64: debug-build-amd64
+	@echo "Creating plugin tarball for amd64..." && tar -czf $(PLUGIN_NAME)-amd64-debug.tar.gz -C $(BUILD_DIR) .
+debug-generate-config: clean
+	@echo "Generating config.json..."
+	mkdir -p $(BUILD_DIR)/rootfs
+	@echo '{"description":"Polarity EBS plugin for ECS","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]},{"source":"/var/log","destination":"/logging","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
+generate-config: clean
+	@echo "Generating config.json..."
+	mkdir -p $(BUILD_DIR)/rootfs
+	@echo '{"description":"Polarity EBS plugin for ECS","entrypoint":["/bin/$(BINARY_NAME)"], "interface":{"types":["docker.volumedriver/1.0"],"socket":"$(SOCK_NAME).sock"},"mounts":[{"source":"/dev","destination":"/dev","type":"bind","options":["rbind"]}],"propagatedMount":"/mnt","network":{"type":"host"},"linux":{"allowAllDevices":true,"capabilities":["CAP_SYS_ADMIN"]}}' > $(BUILD_DIR)/config.json
+debug-build-amd64: debug-generate-config
+	@echo "Building amd64 Docker image for debugging..."
+	docker buildx build --platform linux/amd64 --build-arg DEBUG=true -t plx86 --load .
+	DOCKER_ID=$$(docker create plx86); \
+	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
+	docker rm $$DOCKER_ID

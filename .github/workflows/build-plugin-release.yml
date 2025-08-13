@@ -37,12 +37,12 @@ jobs:
 
       - name: Create tarball
         run: |
-          tar -cvf polarity-ecs-ebs-plugin.amd64.tar -C ./build .
+          tar -czf polarity-ecs-ebs-plugin.amd64.tar.gz -C ./build .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
-          files: polarity-ecs-ebs-plugin.amd64.tar
+          files: polarity-ecs-ebs-plugin.amd64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -77,11 +77,11 @@ jobs:
 
       - name: Create tarball
         run: |
-          tar -cvf polarity-ecs-ebs-plugin.arm64.tar -C ./build .
+          tar -czf polarity-ecs-ebs-plugin.arm64.tar.gz -C ./build .
 
       - name: Upload to release
         uses: softprops/action-gh-release@v1
         with:
-          files: polarity-ecs-ebs-plugin.arm64.tar
+          files: polarity-ecs-ebs-plugin.arm64.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -40,7 +40,7 @@ jobs:
 
       - name: Create tarball
         run: |
-          tar -cvf polarity-ecs-ebs-plugin.amd64.tar -C ./build .
+          tar -czf polarity-ecs-ebs-plugin.amd64.tar.gz -C ./build .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -52,8 +52,8 @@ jobs:
         env:
           CODE_BUCKET: ${{ secrets.CODE_BUCKET }}
         run: |
-          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar s3://${CODE_BUCKET}/releases/${{ github.sha }}/amd64/polarity-ecs-ebs-plugin.tar
-          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar s3://${CODE_BUCKET}/releases/latest/amd64/polarity-ecs-ebs-plugin.tar
+          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar.gz s3://${CODE_BUCKET}/releases/${{ github.sha }}/amd64/polarity-ecs-ebs-plugin.tar.gz
+          aws s3 cp polarity-ecs-ebs-plugin.amd64.tar.gz s3://${CODE_BUCKET}/releases/latest/amd64/polarity-ecs-ebs-plugin.tar.gz
 
   plugin-arm64:
     runs-on: ubuntu-latest
@@ -89,7 +89,7 @@ jobs:
 
       - name: Create tarball
         run: |
-          tar -cvf polarity-ecs-ebs-plugin.arm64.tar -C ./build .
+          tar -czf polarity-ecs-ebs-plugin.arm64.tar.gz -C ./build .
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -101,5 +101,5 @@ jobs:
         env:
           CODE_BUCKET: ${{ secrets.CODE_BUCKET }}
         run: |
-          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar s3://${CODE_BUCKET}/releases/${{ github.sha }}/arm64/polarity-ecs-ebs-plugin.tar
-          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar s3://${CODE_BUCKET}/releases/latest/arm64/polarity-ecs-ebs-plugin.tar
+          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar.gz s3://${CODE_BUCKET}/releases/${{ github.sha }}/arm64/polarity-ecs-ebs-plugin.tar.gz
+          aws s3 cp polarity-ecs-ebs-plugin.arm64.tar.gz s3://${CODE_BUCKET}/releases/latest/arm64/polarity-ecs-ebs-plugin.tar.gz
