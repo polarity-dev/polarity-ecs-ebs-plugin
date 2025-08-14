@@ -320,7 +320,7 @@ func main() {
 			return
 		}
 
-		cmd := exec.Command("/bin/umount", filepath.Join("/mnt", req.Name))
+		cmd := exec.Command("umount", filepath.Join("/mnt", req.Name))
 		if err := cmd.Run(); err != nil {
 			response := map[string]string{
 				"Err": err.Error(),

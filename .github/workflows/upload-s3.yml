@@ -1,4 +1,4 @@
-name: Build plugin
+name: Build plugin and upload to S3
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  plugin-amd64:
+  upload-s3-plugin-amd64:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -55,7 +55,7 @@ jobs:
           aws s3 cp polarity-ecs-ebs-plugin.amd64.tar.gz s3://${CODE_BUCKET}/releases/${{ github.sha }}/amd64/polarity-ecs-ebs-plugin.tar.gz
           aws s3 cp polarity-ecs-ebs-plugin.amd64.tar.gz s3://${CODE_BUCKET}/releases/latest/amd64/polarity-ecs-ebs-plugin.tar.gz
 
-  plugin-arm64:
+  upload-s3-plugin-arm64:
     runs-on: ubuntu-latest
     permissions:
       id-token: write

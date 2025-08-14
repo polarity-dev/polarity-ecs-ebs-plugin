@@ -33,7 +33,8 @@ Here is an example of the plugin working with CloudFormation
 ```
 When the task is created the volume will be attached to the task.
 
-In this case the plugin should already be installed in the host machine this can be done either using a custom AMI or in the EC2 user data.
+In this case the plugin should already be installed in the host machine.
+This can be done either using a custom AMI or in the EC2 user data.
 
 
 ## Installation
