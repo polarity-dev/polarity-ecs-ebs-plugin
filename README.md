@@ -42,7 +42,11 @@ Firstrly pick the correct release based on your system.
 
 Install the plugin from `.tar.gz` release
 ```sh
-curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/<release_tag>/polarity-ecs-ebs-plugin.amd64.tar.gz # aws s3 cp <source> polarity-ecs-ebs-plugin.tar.gz
+curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/<release_tag>/polarity-ecs-ebs-plugin.amd64.tar.gz #
+# or
+aws s3 cp s3://polarity-ecs-ebs-plugin/releases/latest/<arch>/polarity-ecs-ebs-plugin.tar.gz ./polarity-ecs-ebs-plugin.tar.gz
+# or
+curl -o ./polarity-ecs-ebs-plugin.tar.gz https://polarity-ecs-ebs-plugin.s3.eu-central-1.amazonaws.com/releases/latest/arm64/polarity-ecs-ebs-plugin.tar.gz
 mkdir polarity-ecs-ebs-plugin
 tar -xzf polarity-ecs-ebs-plugin.tar.gz -C polarity-ecs-ebs-plugin
 docker plugin create polarity-ecs-ebs-plugin ./polarity-ecs-ebs-plugin

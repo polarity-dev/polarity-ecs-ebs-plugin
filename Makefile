@@ -28,7 +28,7 @@ generate-config: clean
 
 
 docker-build-amd64: generate-config
-	GOOS=linux GO_ARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$(COMMIT_HASH)" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$(COMMIT_HASH)" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
 	docker buildx build --platform linux/amd64 -t plx86 --load .
 	DOCKER_ID=$$(docker create plx86); \
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
@@ -39,7 +39,7 @@ tar-amd64: docker-build-amd64
 
 docker-build-arm64: clean generate-config
 	@echo "Building Docker image..."
-	GOOS=linux GO_ARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$(COMMIT_HASH)" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.CommitHash=$(COMMIT_HASH)" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
 	mkdir -p ./build/rootfs
 	docker buildx build --platform linux/arm64 -t plarm64 --load .
 	DOCKER_ID=$$(docker create plarm64); \
@@ -52,7 +52,7 @@ tar-arm64: docker-build-arm64
 
 debug-build-amd64: debug-generate-config
 	@echo "Building amd64 Docker image for debugging..."
-	GOOS=linux GO_ARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Debug=true" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Debug=true" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
 	docker buildx build --platform linux/amd64 -t plx86debug --load .
 	DOCKER_ID=$$(docker create plx86debug); \
 	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
