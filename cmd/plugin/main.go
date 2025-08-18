@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -10,7 +11,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-  "io"
 
 	"github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/polarity-dev/polarity-ecs-ebs-plugin/internal"
@@ -29,19 +29,19 @@ var Debug string = "false"
 var CommitHash string = "unknown"
 
 func main() {
-  if Debug == "true" {
-    logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-    if err != nil {
-      log.Fatalf("Failed to open log file: %v", err)
-    }
-    defer logFile.Close()
+	if Debug == "true" {
+		logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		if err != nil {
+			log.Fatalf("Failed to open log file: %v", err)
+		}
+		defer logFile.Close()
 
-    multiWriter := io.MultiWriter(os.Stdout, logFile)
+		multiWriter := io.MultiWriter(os.Stdout, logFile)
 
-    log.SetOutput(multiWriter)
-  } else {
-    log.SetOutput(os.Stdout)
-  }
+		log.SetOutput(multiWriter)
+	} else {
+		log.SetOutput(os.Stdout)
+	}
 	log.Println("Starting Polarity EBS Plugin (debug=" + Debug + ", commit=" + CommitHash + ")...")
 
 	sockPath := os.Getenv("SOCK_PATH")
@@ -50,8 +50,6 @@ func main() {
 	}
 
 	log.Println("Sock path is " + sockPath)
-
-	log.Println("Starting Docker Plugin...")
 
 	mux := http.NewServeMux()
 
@@ -158,7 +156,7 @@ func main() {
 			return
 		}
 
-		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name, meta.Region)
+		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name, meta.Region, meta.AvailabilityZone)
 		switch checkVolRes {
 		case internal.OK:
 			log.Printf("Volume %s is not in use by any ECS tasks", req.Name)
@@ -228,6 +226,8 @@ func main() {
 			return
 		}
 
+		log.Printf("Received Remove Request: %+v", req)
+
 		if req.Name == "" {
 			response := map[string]string{
 				"Err": "Name cannot be empty or null",
@@ -268,8 +268,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/VolumeDriver.Get", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("\n\nGetting volume")
-
 		var req struct {
 			Name string
 		}
@@ -277,6 +275,8 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"Err": "Invalid JSON: %s"}`, err), http.StatusBadRequest)
 			return
 		}
+
+		log.Printf("Received Get Request: %+v", req)
 
 		if req.Name == "" {
 			response := map[string]interface{}{
@@ -314,8 +314,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/VolumeDriver.Unmount", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("\n\nUnmounting volume")
-
 		var req struct {
 			Name string
 		}
@@ -323,6 +321,8 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"Err": "Invalid JSON: %s"}`, err), http.StatusBadRequest)
 			return
 		}
+
+		log.Printf("Received Unmount Request: %+v", req)
 
 		if req.Name == "" {
 			response := map[string]string{
@@ -348,8 +348,6 @@ func main() {
 	})
 
 	mux.HandleFunc("/VolumeDriver.Path", func(w http.ResponseWriter, r *http.Request) {
-		log.Println("\n\nGetting volume path")
-
 		var req struct {
 			Name string
 		}
@@ -357,6 +355,8 @@ func main() {
 			http.Error(w, fmt.Sprintf(`{"Err": "Invalid JSON: %s"}`, err), http.StatusBadRequest)
 			return
 		}
+
+		log.Printf("Received Path Request: %+v", req)
 
 		if req.Name == "" {
 			response := map[string]string{
@@ -427,7 +427,7 @@ func main() {
 		}
 	})
 
-	log.Println("Plugin HTTP server is starting on", sockPath)
+	log.Println("Plugin HTTP SOCK server is starting on", sockPath)
 	if err := http.Serve(listener, mux); err != nil {
 		log.Fatalf("Failed to serve plugin API: %v", err)
 	}

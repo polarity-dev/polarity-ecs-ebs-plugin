@@ -11,15 +11,6 @@ import (
 	"time"
 )
 
-type nvmeDevice struct {
-	SerialNumber string `json:"SerialNumber"`
-	DevicePath   string `json:"DevicePath"`
-}
-
-type nvmeList struct {
-	Devices []nvmeDevice `json:"Devices"`
-}
-
 func runCommand(cmdStr string, args ...string) (string, error) {
 	cmd := exec.Command(cmdStr, args...)
 	var out bytes.Buffer
@@ -67,9 +58,9 @@ func FindDeviceByVolumeID(volumeID string) (string, error) {
 }
 
 func GetFilesystem(device string) (string, error) {
-  if !strings.HasPrefix(device, "/dev") {
-    device = "/dev/" + device
-  }
+	if !strings.HasPrefix(device, "/dev") {
+		device = "/dev/" + device
+	}
 	output, err := runCommand("blkid", device)
 	if err != nil {
 		return "", fmt.Errorf("failed to run blkid on %s: %v", device, err)

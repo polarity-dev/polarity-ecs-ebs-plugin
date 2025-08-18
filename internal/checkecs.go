@@ -3,10 +3,7 @@ package internal
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
-	"os"
 	"strings"
 	"sync"
 
@@ -24,26 +21,6 @@ const (
 	VolumeInUseError
 )
 
-func getCurrentAZ() (string, error) {
-	// get AZ from env first, to test locally
-	az := strings.TrimSpace(os.Getenv("AVAILABILITY_ZONE"))
-	if az != "" {
-		return az, nil
-	}
-
-	// If not set, try to get it from IMDS
-	resp, err := http.Get("http://169.254.169.254/latest/meta-data/placement/availability-zone")
-	if err != nil {
-		return "", fmt.Errorf("impossibile contattare IMDS: %v", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(body), nil
-}
-
 // Check single cluster
 func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ string, volumeFound *bool, mu *sync.Mutex, wg *sync.WaitGroup, volumeToCheck string) {
 	defer wg.Done()
@@ -57,14 +34,22 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 	var ciArns []string
 	for ciPaginator.HasMorePages() {
 		output, err := ciPaginator.NextPage(ctx)
-		if err != nil { log.Printf("error listing instances for %s: %v", clusterName, err); return }
+		if err != nil {
+			log.Printf("error listing instances for %s: %v", clusterName, err)
+			return
+		}
 		ciArns = append(ciArns, output.ContainerInstanceArns...)
 	}
-	if len(ciArns) == 0 { return }
+	if len(ciArns) == 0 {
+		return
+	}
 
 	// 2. Describe container instances to get EC2 IDsq
 	describedCIs, err := ecsClient.DescribeContainerInstances(ctx, &ecs.DescribeContainerInstancesInput{Cluster: &clusterName, ContainerInstances: ciArns})
-	if err != nil { log.Printf("error describing instances for %s: %v", clusterName, err); return }
+	if err != nil {
+		log.Printf("error describing instances for %s: %v", clusterName, err)
+		return
+	}
 
 	ec2IdToCiArn := make(map[string]string)
 	var ec2Ids []string
@@ -75,7 +60,10 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 
 	// 3. Describe EC2 instances to filter by AZ
 	describedEc2s, err := ec2Client.DescribeInstances(ctx, &ec2.DescribeInstancesInput{InstanceIds: ec2Ids})
-	if err != nil { log.Printf("error describing EC2 for %s: %v", clusterName, err); return }
+	if err != nil {
+		log.Printf("error describing EC2 for %s: %v", clusterName, err)
+		return
+	}
 
 	ciArnsInAZ := make(map[string]bool)
 	for _, res := range describedEc2s.Reservations {
@@ -85,21 +73,31 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 			}
 		}
 	}
-	if len(ciArnsInAZ) == 0 { return }
+	if len(ciArnsInAZ) == 0 {
+		return
+	}
 
 	// 4. List and inspect tasks only on instances in the correct AZ
 	taskPaginator := ecs.NewListTasksPaginator(ecsClient, &ecs.ListTasksInput{Cluster: &clusterName})
 	var taskArns []string
 	for taskPaginator.HasMorePages() {
 		tasksOutput, err := taskPaginator.NextPage(ctx)
-		if err != nil { log.Printf("error listing tasks for %s: %v", clusterName, err); return }
+		if err != nil {
+			log.Printf("error listing tasks for %s: %v", clusterName, err)
+			return
+		}
 		taskArns = append(taskArns, tasksOutput.TaskArns...)
 	}
 
-	if len(taskArns) == 0 { return }
+	if len(taskArns) == 0 {
+		return
+	}
 
 	describedTasks, err := ecsClient.DescribeTasks(ctx, &ecs.DescribeTasksInput{Cluster: &clusterName, Tasks: taskArns})
-	if err != nil { log.Printf("error describing tasks for %s: %v", clusterName, err); return }
+	if err != nil {
+		log.Printf("error describing tasks for %s: %v", clusterName, err)
+		return
+	}
 
 	taskDefsToInspect := make(map[string]bool)
 	for _, task := range describedTasks.Tasks {
@@ -110,11 +108,17 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 
 	for taskDefArn := range taskDefsToInspect {
 		mu.Lock()
-		if *volumeFound { mu.Unlock(); return }
+		if *volumeFound {
+			mu.Unlock()
+			return
+		}
 		mu.Unlock()
 
 		defOutput, err := ecsClient.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{TaskDefinition: &taskDefArn})
-		if err != nil { log.Printf("error describing task def %s: %v", taskDefArn, err); continue }
+		if err != nil {
+			log.Printf("error describing task def %s: %v", taskDefArn, err)
+			continue
+		}
 
 		for _, vol := range defOutput.TaskDefinition.Volumes {
 			if *vol.Name == volumeToCheck {
@@ -128,14 +132,8 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 	}
 }
 
-
-func CheckForTasksWithVolumeInUse(volumeToCheck string, region string) (Status, error) {
+func CheckForTasksWithVolumeInUse(volumeToCheck string, region string, availabilityZone string) (Status, error) {
 	log.Println("Starting check for tasks using volume: ", volumeToCheck)
-	targetAZ, err := getCurrentAZ()
-	if err != nil {
-		return ProcessingError, fmt.Errorf("error while retrieving AZ: %v", err)
-	}
-	log.Printf("📍 AZ is: %s", targetAZ)
 
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
@@ -163,7 +161,7 @@ func CheckForTasksWithVolumeInUse(volumeToCheck string, region string) (Status, 
 	// Check each cluster concurrently
 	for _, clusterArn := range clustersOutput.ClusterArns {
 		wg.Add(1)
-		go checkCluster(ctx, cfg, clusterArn, targetAZ, &volumeFound, &mu, &wg, volumeToCheck)
+		go checkCluster(ctx, cfg, clusterArn, availabilityZone, &volumeFound, &mu, &wg, volumeToCheck)
 	}
 
 	wg.Wait() // Wait for all checks to finish
