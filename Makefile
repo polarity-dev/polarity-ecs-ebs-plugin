@@ -61,6 +61,17 @@ debug-tar-amd64: debug-build-amd64
 	@echo "Creating plugin tarball for amd64..."
 	tar -czf $(PLUGIN_NAME)-amd64-debug.tar.gz -C $(BUILD_DIR) .
 
+debug-build-arm64: debug-generate-config
+	@echo "Building arm64 Docker image for debugging..."
+	GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Debug=true" -o ./dist/polarity-ecs-ebs-plugin ./cmd/plugin
+	docker buildx build --platform linux/arm64 -t plarm64debug --load .
+	DOCKER_ID=$$(docker create plarm64debug); \
+	docker export $$DOCKER_ID | tar -x -C ./build/rootfs; \
+	docker rm $$DOCKER_ID
+debug-tar-arm64: debug-build-arm64
+	@echo "Creating plugin tarball for arm64..."
+	tar -czf $(PLUGIN_NAME)-arm64-debug.tar.gz -C $(BUILD_DIR) .
+
 
 dev:
 	@echo "Running with go run and default params..."

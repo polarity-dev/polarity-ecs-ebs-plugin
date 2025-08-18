@@ -160,6 +160,20 @@ func main() {
 			return
 		}
 
+		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name)
+		switch checkVolRes {
+		case internal.OK:
+			log.Printf("Volume %s is not in use by any ECS tasks", req.Name)
+		case internal.ProcessingError:
+			response := MountResponse{Err: fmt.Sprintf("Error checking volume usage: %v", checkVolErr), MountPoint: ""}
+			json.NewEncoder(w).Encode(response)
+			return
+		default:
+			response := MountResponse{Err: fmt.Sprintf("Volume %s is in use by ECS tasks", req.Name), MountPoint: ""}
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
 		// attach the volume using aws sdk
 		if vol.State == types.VolumeStateInUse && vol.Attachments[0].InstanceId != nil && *vol.Attachments[0].InstanceId != meta.InstanceID {
 			log.Printf("Volume %s is in-use by another instance (%s), detaching...", req.Name, *vol.Attachments[0].InstanceId)

@@ -31,6 +31,22 @@ Here is an example of the plugin working with CloudFormation
               Name: <ebs-volume-id>
 
 ```
+To not incur in any data loss some downtime will be necessary, so when the task is replaced by a new version you need to firstly stop the previous one.
+
+To do that automatically you should update your ECS service in CloudFormation to something like this.
+```yml
+	Service:
+    Type: AWS::ECS::Service
+    Properties:
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 0
+        MaximumPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+```
+
+
 When the task is created the volume will be attached to the task.
 
 In this case the plugin should already be installed in the host machine.
