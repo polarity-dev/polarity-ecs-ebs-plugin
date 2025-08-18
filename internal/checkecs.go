@@ -129,7 +129,7 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 }
 
 
-func CheckForTasksWithVolumeInUse(volumeToCheck string) (Status, error) {
+func CheckForTasksWithVolumeInUse(volumeToCheck string, region string) (Status, error) {
 	log.Println("Starting check for tasks using volume: ", volumeToCheck)
 	targetAZ, err := getCurrentAZ()
 	if err != nil {
@@ -138,7 +138,7 @@ func CheckForTasksWithVolumeInUse(volumeToCheck string) (Status, error) {
 	log.Printf("📍 AZ is: %s", targetAZ)
 
 	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx)
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		return ProcessingError, fmt.Errorf("error while creating AWS configuration: %v", err)
 	}

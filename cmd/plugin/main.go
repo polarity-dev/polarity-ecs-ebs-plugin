@@ -160,7 +160,7 @@ func main() {
 			return
 		}
 
-		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name)
+		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name, meta.Region)
 		switch checkVolRes {
 		case internal.OK:
 			log.Printf("Volume %s is not in use by any ECS tasks", req.Name)
