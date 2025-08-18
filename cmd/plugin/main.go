@@ -29,7 +29,6 @@ var Debug string = "false"
 var CommitHash string = "unknown"
 
 func main() {
-  log.Println("Starting Polarity EBS Plugin (debug=" + Debug + ", commit=" + CommitHash + ")...")
   if Debug == "true" {
     logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
     if err != nil {
@@ -43,8 +42,7 @@ func main() {
   } else {
     log.SetOutput(os.Stdout)
   }
-
-	log.Println("Setting up docker plugin...")
+	log.Println("Starting Polarity EBS Plugin (debug=" + Debug + ", commit=" + CommitHash + ")...")
 
 	sockPath := os.Getenv("SOCK_PATH")
 	if sockPath == "" {
