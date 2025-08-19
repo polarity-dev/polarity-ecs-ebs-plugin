@@ -22,7 +22,7 @@ const (
 )
 
 // Check single cluster
-func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ string, volumeFound *bool, mu *sync.Mutex, wg *sync.WaitGroup, volumeToCheck string) {
+func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ string, volumeFound *int, mu *sync.Mutex, wg *sync.WaitGroup, volumeToCheck string) {
 	defer wg.Done()
 
 	ecsClient := ecs.NewFromConfig(cfg)
@@ -30,6 +30,7 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 	clusterName := *aws.String(clusterArn[strings.LastIndex(clusterArn, "/")+1:])
 
 	// 1. List all container instances in cluster
+	log.Printf("Checking cluster %s for volume %s in AZ %s", clusterName, volumeToCheck, targetAZ)
 	ciPaginator := ecs.NewListContainerInstancesPaginator(ecsClient, &ecs.ListContainerInstancesInput{Cluster: &clusterName})
 	var ciArns []string
 	for ciPaginator.HasMorePages() {
@@ -106,14 +107,9 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 		}
 	}
 
-	for taskDefArn := range taskDefsToInspect {
-		mu.Lock()
-		if *volumeFound {
-			mu.Unlock()
-			return
-		}
-		mu.Unlock()
+	var taskDefArnsToCheck []string
 
+	for taskDefArn := range taskDefsToInspect {
 		defOutput, err := ecsClient.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{TaskDefinition: &taskDefArn})
 		if err != nil {
 			log.Printf("error describing task def %s: %v", taskDefArn, err)
@@ -122,11 +118,49 @@ func checkCluster(ctx context.Context, cfg aws.Config, clusterArn, targetAZ stri
 
 		for _, vol := range defOutput.TaskDefinition.Volumes {
 			if *vol.Name == volumeToCheck {
-				log.Printf("BLOCKED: Found volume '%s' in use by task def %s", volumeToCheck, taskDefArn)
-				mu.Lock()
-				*volumeFound = true
-				mu.Unlock()
-				return
+				log.Printf("Found volume '%s' in use by task def %s", volumeToCheck, taskDefArn)
+				taskDefArnsToCheck = append(taskDefArnsToCheck, taskDefArn)
+			}
+		}
+	}
+
+	if len(taskDefArnsToCheck) == 0 {
+		log.Printf("No tasks using volume '%s' found in cluster %s", volumeToCheck, clusterName)
+		return
+	}
+
+	// https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-lifecycle-explanation.html
+	stillRunningTaskState := map[string]struct{}{
+		"RUNNING":   {},
+		"PENDING":   {},
+		"PROVISIONING":   {},
+		"ACTIVATING":   {},
+		"DEACTIVATING":   {},
+		"STOPPING":   {},
+		// "DEPROVISIONING":   {}, // I think this can be ignored
+	}
+
+	for _, taskDefArn := range taskDefArnsToCheck {
+		// At the start of each iteration, check if a task that uses the volume was already found
+		mu.Lock()
+		if *volumeFound > 1 {
+			mu.Unlock()
+			return
+		}
+		mu.Unlock()
+		for _, task := range describedTasks.Tasks {
+			if *task.TaskDefinitionArn == taskDefArn {
+				if _, ok := stillRunningTaskState[*task.LastStatus]; ok {
+					// If the task is still in one of the state above, we can consider the volume in use
+					mu.Lock()
+					*volumeFound += 1
+					log.Printf("Volume '%s' is in use by task %s in cluster %s", volumeToCheck, *task.TaskArn, clusterName)
+					if *volumeFound > 1 {
+						mu.Unlock()
+						return
+					}
+					mu.Unlock()
+				}
 			}
 		}
 	}
@@ -156,7 +190,7 @@ func CheckForTasksWithVolumeInUse(volumeToCheck string, region string, availabil
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	volumeFound := false
+	volumeFound := 0
 
 	// Check each cluster concurrently
 	for _, clusterArn := range clustersOutput.ClusterArns {
@@ -166,7 +200,7 @@ func CheckForTasksWithVolumeInUse(volumeToCheck string, region string, availabil
 
 	wg.Wait() // Wait for all checks to finish
 
-	if volumeFound {
+	if volumeFound > 1 {
 		return VolumeInUseError, fmt.Errorf("volume '%s' is currently in use by task", volumeToCheck)
 	}
 
