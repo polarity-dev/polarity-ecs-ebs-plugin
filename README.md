@@ -35,15 +35,15 @@ To not incur in any data loss some downtime will be necessary, so when the task 
 
 To do that automatically you should update your ECS service in CloudFormation to something like this.
 ```yml
-	Service:
-    Type: AWS::ECS::Service
-    Properties:
-      DeploymentConfiguration:
-        MinimumHealthyPercent: 0
-        MaximumPercent: 100
-        DeploymentCircuitBreaker:
-          Enable: true
-          Rollback: true
+Service:
+	Type: AWS::ECS::Service
+	Properties:
+		DeploymentConfiguration:
+			MinimumHealthyPercent: 0
+			MaximumPercent: 100
+			DeploymentCircuitBreaker:
+				Enable: true
+				Rollback: true
 ```
 
 
@@ -51,6 +51,15 @@ When the task is created the volume will be attached to the task.
 
 In this case the plugin should already be installed in the host machine.
 This can be done either using a custom AMI or in the EC2 user data.
+
+To make sure that the volume is attached to the right task and no other task are requiring this particular volume, we are doing some api calls, so you need to add some policies to the docker plugin
+```
+"ecs:ListClusters",
+"ecs:DescribeContainerInstances",
+"ecs:DescribeTasks",
+"ecs:DescribeTaskDefinition",
+"ec2:DescribeInstances"
+```
 
 
 ## Installation
@@ -72,7 +81,7 @@ docker plugin enable polarity-ecs-ebs-plugin
 NOTE: If you are installing the plugin on the ec2 that hosts the ecs cluster remember to restart the `ecs` service with `systemctl`
 
 ## Logging
-The plugin logs on docker journalctl
+The plugin logs on docker journalctl, so if you are incurring in some unexpected error during installation make sure to take a look at docker's journalctl
 ```sh
 journalctl -u docker
 ```
