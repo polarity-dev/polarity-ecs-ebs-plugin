@@ -1,26 +1,44 @@
-# Polarity EBS plugin for ECS
+# polarity-ecs-ebs-plugin
 
-## How does this work
-Here is an example of the plugin working by calling the docker cli for simplicity
+## Description
+This Docker plugin allows you to attach an existing **EBS volume** to an **ECS task** using the **EC2 launch type**.
+It provides persistent storage beyond the lifecycle of a single task instantiation.
+
+The plugin works by:
+1. Attaching an EBS volume to the EC2 instance where ECS is starting the task.
+2. Creating a corresponding Docker volume.
+3. Attaching it to the ECS task when the container starts.
+
+⚠️ The ECS container must be in the **same Availability Zone** as the EBS volume.
+If the volume has no filesystem, one will be created with `mkfs.xfs`.
+
+
+## Installation
+
+The plugin should be either installed in the AMI, or from User Data.
+```sh
+# Install the Docker volume plugin
+# Download specific intel archs
+curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/v0.1.0/polarity-ecs-ebs-plugin.amd64.tar.gz
+# Download specific arm archs
+curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/v0.1.0/polarity-ecs-ebs-plugin.arm64.tar.gz
+
+mkdir polarity-ecs-ebs-plugin
+tar -xzf polarity-ecs-ebs-plugin.tar.gz -C polarity-ecs-ebs-plugin
+docker plugin create polarity-ecs-ebs-plugin ./polarity-ecs-ebs-plugin
+docker plugin enable polarity-ecs-ebs-plugin
 ```
-docker volume create -d polarity-ecs-ebs-plugin <ebs-volume-id>
-docker run --rm -it -v <ebs-volume-id>:/data alpine
-```
-When the container is started we call AWS to get `<ebs-volume-id>` informations, the volume is eventually detached from other EC2 and attached to the cluster.
-Then if the volume has no filesystem, it will be created using `mkfs.xfs`.
-Then the volume will be mounted in a location managed by docker and accessible from the mountpoint in the container.
 
-The volume needs to be in the same az as the EC2
+The plugin mounts the EBS volume with the given id to the desired container path.
 
-Here is an example of the plugin working with CloudFormation
-```yml
-  TaskDefinition:
+### Examples
+
+- Task Definition using CloudFormation yaml
+
+```yaml
+TaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
-      ContainerDefinitions:
-        MountPoints:
-          - SourceVolume: <ebs-volume-id>
-            ContainerPath: <your desired path of your app in the container>
       Volumes:
         - Name: <ebs-volume-id>
           DockerVolumeConfiguration:
@@ -29,73 +47,92 @@ Here is an example of the plugin working with CloudFormation
             Driver: polarity-ecs-ebs-plugin
             Labels:
               Name: <ebs-volume-id>
+      ContainerDefinitions:
+        MountPoints:
+          - SourceVolume: <ebs-volume-id>
+            ContainerPath: <your desired path of your app in the container>
 
 ```
-To not incur in any data loss some downtime will be necessary, so when the task is replaced by a new version you need to firstly stop the previous one.
+- Task Definition using Terraform
 
-To do that automatically you should update your ECS service in CloudFormation to something like this.
-```yml
-Service:
-	Type: AWS::ECS::Service
-	Properties:
-		DeploymentConfiguration:
-			MinimumHealthyPercent: 0
-			MaximumPercent: 100
-			DeploymentCircuitBreaker:
-				Enable: true
-				Rollback: true
+```terraform
+resource "aws_ecs_task_definition" "task_with_ebs" {
+  volume {
+    name = aws_ebs_volume.data.id
+    docker_volume_configuration {
+      scope         = "shared"
+      autoprovision = true
+      driver        = "polarity-ecs-ebs-plugin"
+      labels = {
+        Name = aws_ebs_volume.data.id
+      }
+    }
+  }
+  container_definitions = jsonencode([
+    {
+      mountPoints = [
+        {
+          sourceVolume  = aws_ebs_volume.data.id
+          containerPath = var.container_mount_path
+        }
+      ]
+    }
+  ])
+}
+```
+
+## Permissions
+Here's the IAM Policy of the EC2 container instance
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Sid": "DockerPluginOps",
+            "Action": [
+                "ecs:ListClusters",
+                "ecs:ListContainerInstances",
+                "ecs:DescribeContainerInstances",
+                "ecs:ListTasks",
+                "ecs:DescribeTasks",
+                "ecs:DescribeTaskDefinition",
+                "ec2:DescribeInstances",
+                "ec2:DescribeVolumes"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
+        },
+				{
+            "Sid": "DockerPluginWrite",
+            "Action": [
+                "ec2:DetachVolume",
+                "ec2:AttachVolume"
+            ],
+            "Effect": "Allow",
+            "Resource": "<volume_arn>"
+        }
+    ]
+}
 ```
 
 
-When the task is created the volume will be attached to the task.
+## Notes
+When the task dies or is terminated by ECS, the volume is NOT automatically detached from the EC2: this is intentional to spin up a new instance of the container faster in case of failure or ECS service update.
 
-In this case the plugin should already be installed in the host machine.
-This can be done either using a custom AMI or in the EC2 user data.
+## Next steps
+- [ ] Any number of ECS tasks can be attached to the same EBS volume, provided they reside in the same EC2 instance.
 
-To make sure that the volume is attached to the right task and no other task are requiring this particular volume, we are doing some api calls, so you need to add some policies to the docker plugin
-```
-"ecs:ListClusters",
-"ecs:DescribeContainerInstances",
-"ecs:DescribeTasks",
-"ecs:DescribeTaskDefinition",
-"ec2:DescribeInstances"
-```
-
-
-## Installation
-Firstrly pick the correct release based on your system.
-
-Install the plugin from `.tar.gz` release
-```sh
-curl -o polarity-ecs-ebs-plugin.tar.gz https://github.com/polarity-dev/polarity-ecs-ebs-plugin/releases/download/<release_tag>/polarity-ecs-ebs-plugin.amd64.tar.gz #
-# or
-aws s3 cp s3://polarity-ecs-ebs-plugin/releases/latest/<arch>/polarity-ecs-ebs-plugin.tar.gz ./polarity-ecs-ebs-plugin.tar.gz
-# or
-curl -o ./polarity-ecs-ebs-plugin.tar.gz https://polarity-ecs-ebs-plugin.s3.eu-central-1.amazonaws.com/releases/latest/arm64/polarity-ecs-ebs-plugin.tar.gz
-mkdir polarity-ecs-ebs-plugin
-tar -xzf polarity-ecs-ebs-plugin.tar.gz -C polarity-ecs-ebs-plugin
-docker plugin create polarity-ecs-ebs-plugin ./polarity-ecs-ebs-plugin
-docker plugin enable polarity-ecs-ebs-plugin
-```
-
-NOTE: If you are installing the plugin on the ec2 that hosts the ecs cluster remember to restart the `ecs` service with `systemctl`
-
-## Logging
-The plugin logs on docker journalctl, so if you are incurring in some unexpected error during installation make sure to take a look at docker's journalctl
-```sh
-journalctl -u docker
-```
-
-## Building the plugin
+## Development instructions
 Docker plugins are not regular docker containers. They are just a folder with a `config.json` and a `rootfs`:
 - `config.json` is the file that describes the plugin, where to find the binary of the plugin and what paths to mount
 - `rootfs` is the isolated filesystem of the plugin, to comunicate with the host machine we need to mount the path that we want to work on (`/dev`)
 - our binary will be located in `/rootfs/bin`
 
-The plugin needs to be compiled for intel and arm architecture separately and to work it needs some other tools and files.
-The plugin will run on an ec2 and it will use the aws sdk, this sdk when running on an ec2 will use the iam role of the host machine but this will work only if the host machine has the necessary certificates to call the aws api.
-But the plugin has a completely separate filesystem so it can't access the certificates on the host machine, we have also the same issue when trying to use other binaries like `lsblk` or `mkfs.xfs`
-To avoid this errors we will build the plugin with docker, we install the certificates and the other tools and then we export the fs of the docker image and now we have the complete plugin working.
+
+The plugin must be compiled separately for Intel and ARM architectures, and requires additional tools and files to function correctly.
+When running on an EC2 instance, the plugin uses the AWS SDK, which relies on the IAM role of the host machine. However, this works only if the host has the necessary certificates to authenticate with AWS APIs.
+Since the plugin operates in a completely isolated filesystem, it cannot access certificates or binaries (such as `lsblk` or `mkfs.xfs`) present on the host by default.
+To resolve these issues, the plugin is built using Docker: all required certificates and tools are installed inside the container, and then the filesystem of the Docker image is exported. This ensures the plugin has everything it needs to work independently.
 
 To develop on the plugin you can run
 ```sh
@@ -104,13 +141,13 @@ make dev
 This will start a local sock with the server
 You can also run `make health-check` to check if the server is responding
 
-To test the full functionality of the plugin you should run `make debug-tar-amd64` and copy the `.tar.gz` file on your ecs cluster
+To test the full functionality of the plugin you should run `make debug-tar-amd64` and copy the `.tar.gz` file on your ECS cluster
 This version will also create a log file in `/var/log/polarity-ecs-ebs.log`
 
-To call manually the server on ecs cluster you should ssh into the cluster and then follow the installation guide.
+To call manually the server on ECS cluster you should ssh into the cluster and then follow the installation guide.
 
 Now your plugin will be enabled, the sock file will be located in `/var/run/docker/plugins/` in a folder with the plugin hash.
 You just need to run something like this
 ```sh
-curl -H "Content-Type: application/json" -XPOST -d '{ "Name": "test" }' --unix-socket ./pl-ebs.sock http:/localhost/health
+curl -H "Content-Type: application/json" -XPOST -d '{ "Name": "test" }' --unix-socket ./pl-ebs.sock http://localhost/health
 ```
