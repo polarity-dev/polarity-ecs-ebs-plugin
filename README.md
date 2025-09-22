@@ -132,8 +132,6 @@ When the task dies or is terminated by ECS, the volume is NOT automatically deta
 - Go >= 1.20
 - Docker >= 20.10
 - GNU Make
-- (Optional) AWS CLI for manual testing
-- Architecture: Intel (amd64) or ARM (arm64)
 
 ### Building from source
 You need to build the plugin separately for Intel and ARM. All required tools and certificates must be included in the isolated filesystem (`rootfs`).
@@ -175,14 +173,13 @@ curl -H "Content-Type: application/json" -XPOST -d '{ "Name": "test" }' --unix-s
 
 ### Publish
 To publish a new version after making changes:
-1. Push a new commit on github, this will always trigget the github action that uploads the plugin to AWS S3.
-2. Create a new tag in the format `vX.Y.Z` (e.g. `v0.1.1`) and push it to github. This will trigget the github action that creates the release in github and uploads the tarballs to the release page.
+1. Push a new commit on `main` branch, this will trigger the github action that uploads the plugin to AWS S3.
+2. Create a new tag in the format `vX.Y.Z` (e.g. `v0.1.1`) and push it to github. This will trigger the github action that creates the release in github and uploads the tarballs to the release page.
 
 ### Variables / Configuration
-- `config.json`: describes plugin behavior, binary path, and mounts.
-- Environment variables (if used):
-  - `AWS_REGION`: AWS region to use
-  - `DEBUG`: enable debug logs
+- `config.json`: describes plugin behavior, binary path, and mounts, it will be automatically generated when building the plugin.
+- Compile-time variables (if used):
+  - `Debug`: enable debug logs
 - Important paths:
   - Plugin binary must be in `/rootfs/bin`
   - Certificates and required tools (like `lsblk`, `mkfs.xfs`) must be in `rootfs`
