@@ -13,9 +13,16 @@ The plugin works by:
 If the volume has no filesystem, one will be created with `mkfs.xfs`.
 
 
-## Installation
+## Usage
 
-The plugin should be either installed in the AMI, or from User Data.
+In order to use the plugin you must:
+1. Install it in the EC2 instances of your ECS cluster
+2. Specify an EBS volume id and a mount path for the Docker volume in your container
+3. Make sure your EC2 instance has the required IAM permissions to attach the EBS volume to the instance itself
+
+### Installation
+
+The plugin should be either already present in your AMI, or downloaded and installed from user data. We recommend using the [Amazon ECS-optimized Linux AMIs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/retrieve-ecs-optimized_AMI.html) as a starting base.
 ```sh
 # Install the Docker volume plugin
 # For Intel (amd64)
@@ -29,11 +36,11 @@ docker plugin create polarity-ecs-ebs-plugin ./polarity-ecs-ebs-plugin
 docker plugin enable polarity-ecs-ebs-plugin
 ```
 
+### Task Definition
+
 The plugin mounts the EBS volume with the given id to the desired container path.
 
-### Examples
-
-- Task Definition using CloudFormation yaml
+- Task Definition example using CloudFormation yaml
 
 ```yaml
 TaskDefinition:
@@ -53,7 +60,7 @@ TaskDefinition:
             ContainerPath: <your desired path of your app in the container>
 
 ```
-- Task Definition using Terraform
+- Task Definition example using Terraform
 
 ```terraform
 resource "aws_ecs_task_definition" "task_with_ebs" {
@@ -82,7 +89,7 @@ resource "aws_ecs_task_definition" "task_with_ebs" {
 ```
 
 ## Permissions
-Here's the IAM Policy of the EC2 container instance
+IAM Policy example. This should be applied to the IAM Role of the EC2 instances in the ECS cluster
 ```json
 {
     "Version": "2012-10-17",
@@ -119,35 +126,67 @@ Here's the IAM Policy of the EC2 container instance
 ## Notes
 When the task dies or is terminated by ECS, the volume is NOT automatically detached from the EC2: this is intentional to spin up a new instance of the container faster in case of failure or ECS service update.
 
-## Next steps
-- [ ] Any number of ECS tasks can be attached to the same EBS volume, provided they reside in the same EC2 instance.
-
 ## Development instructions
-Docker plugins are not regular docker containers. They are just a folder with a `config.json` and a `rootfs`:
-- `config.json` is the file that describes the plugin, where to find the binary of the plugin and what paths to mount
-- `rootfs` is the isolated filesystem of the plugin, to comunicate with the host machine we need to mount the path that we want to work on (`/dev`)
-- our binary will be located in `/rootfs/bin`
 
+### Requirements
+- Go >= 1.20
+- Docker >= 20.10
+- GNU Make
 
-The plugin must be compiled separately for Intel and ARM architectures, and requires additional tools and files to function correctly.
-When running on an EC2 instance, the plugin uses the AWS SDK, which relies on the IAM role of the host machine. However, this works only if the host has the necessary certificates to authenticate with AWS APIs.
-Since the plugin operates in a completely isolated filesystem, it cannot access certificates or binaries (such as `lsblk` or `mkfs.xfs`) present on the host by default.
-To resolve these issues, the plugin is built using Docker: all required certificates and tools are installed inside the container, and then the filesystem of the Docker image is exported. This ensures the plugin has everything it needs to work independently.
+### Building from source
+You need to build the plugin separately for Intel and ARM. All required tools and certificates must be included in the isolated filesystem (`rootfs`).
 
-To develop on the plugin you can run
+**Build for Intel (amd64):**
+```sh
+make docker-build-amd64
+```
+
+**Build for ARM (arm64):**
+```sh
+make docker-build-arm64
+```
+
+To create the debug tarball:
+```sh
+make debug-tar-amd64
+make debug-tar-arm64
+```
+
+### Run
+To start the plugin locally for development:
 ```sh
 make dev
 ```
-This will start a local sock with the server
-You can also run `make health-check` to check if the server is responding
+This starts the local server and creates the socket file.
+To check if the server is running:
+```sh
+make health-check
+```
 
-To test the full functionality of the plugin you should run `make debug-tar-amd64` and copy the `.tar.gz` file on your ECS cluster
-This version will also create a log file in `/var/log/polarity-ecs-ebs.log`
+To test the full plugin, copy the `.tar.gz` file to your ECS cluster. The debug version creates a log at `/var/log/polarity-ecs-ebs.log`.
 
-To call manually the server on ECS cluster you should ssh into the cluster and then follow the installation guide.
-
-Now your plugin will be enabled, the sock file will be located in `/var/run/docker/plugins/` in a folder with the plugin hash.
-You just need to run something like this
+To manually call the server on ECS, SSH into the cluster and follow the install guide. When enabled, the socket file is in `/var/run/docker/plugins/`.
+To check plugin health:
 ```sh
 curl -H "Content-Type: application/json" -XPOST -d '{ "Name": "test" }' --unix-socket ./pl-ebs.sock http://localhost/health
 ```
+
+### Publish
+To publish a new version after making changes:
+1. Push a new commit on `main` branch, this will trigger the github action that uploads the plugin to AWS S3.
+2. Create a new tag in the format `vX.Y.Z` (e.g. `v0.1.1`) and push it to github. This will trigger the github action that creates the release in github and uploads the tarballs to the release page.
+
+### Variables / Configuration
+- `config.json`: describes plugin behavior, binary path, and mounts, it will be automatically generated when building the plugin.
+- Compile-time variables (if used):
+  - `Debug`: enable debug logs
+- Important paths:
+  - Plugin binary must be in `/rootfs/bin`
+  - Certificates and required tools (like `lsblk`, `mkfs.xfs`) must be in `rootfs`
+- Log file: `/var/log/polarity-ecs-ebs.log` (debug version only)
+
+---
+
+### Contribution
+Non-exhaustive list of future improvements to be developed:
+- [ ] Any number of ECS tasks can be attached to the same EBS volume, provided they reside in the same EC2 instance
