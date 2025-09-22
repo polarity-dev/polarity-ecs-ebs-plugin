@@ -13,9 +13,16 @@ The plugin works by:
 If the volume has no filesystem, one will be created with `mkfs.xfs`.
 
 
-## Installation
+## Usage
 
-The plugin should be either installed in the AMI, or from User Data.
+In order to use the plugin you must:
+1. Install it in the EC2 instances of your ECS cluster
+2. Specify an EBS volume id and a mount path for the Docker volume in your container
+3. Make sure your EC2 instance has the required IAM permissions to attach the EBS volume to the instance itself
+
+### Installation
+
+The plugin should be either already present in your AMI, or downloaded and installed from user data. We recommend using the [Amazon ECS-optimized Linux AMIs](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/retrieve-ecs-optimized_AMI.html) as a starting base.
 ```sh
 # Install the Docker volume plugin
 # For Intel (amd64)
@@ -29,11 +36,11 @@ docker plugin create polarity-ecs-ebs-plugin ./polarity-ecs-ebs-plugin
 docker plugin enable polarity-ecs-ebs-plugin
 ```
 
+### Task Definition
+
 The plugin mounts the EBS volume with the given id to the desired container path.
 
-### Examples
-
-- Task Definition using CloudFormation yaml
+- Task Definition example using CloudFormation yaml
 
 ```yaml
 TaskDefinition:
@@ -53,7 +60,7 @@ TaskDefinition:
             ContainerPath: <your desired path of your app in the container>
 
 ```
-- Task Definition using Terraform
+- Task Definition example using Terraform
 
 ```terraform
 resource "aws_ecs_task_definition" "task_with_ebs" {
@@ -82,7 +89,7 @@ resource "aws_ecs_task_definition" "task_with_ebs" {
 ```
 
 ## Permissions
-Here's the IAM Policy of the EC2 container instance
+IAM Policy example. This should be applied to the IAM Role of the EC2 instances in the ECS cluster
 ```json
 {
     "Version": "2012-10-17",
@@ -119,9 +126,6 @@ Here's the IAM Policy of the EC2 container instance
 ## Notes
 When the task dies or is terminated by ECS, the volume is NOT automatically detached from the EC2: this is intentional to spin up a new instance of the container faster in case of failure or ECS service update.
 
-## Next steps
-- [ ] Any number of ECS tasks can be attached to the same EBS volume, provided they reside in the same EC2 instance.
-
 ## Development instructions
 Docker plugins are not regular docker containers. They are just a folder with a `config.json` and a `rootfs`:
 - `config.json` is the file that describes the plugin, where to find the binary of the plugin and what paths to mount
@@ -151,3 +155,7 @@ You just need to run something like this
 ```sh
 curl -H "Content-Type: application/json" -XPOST -d '{ "Name": "test" }' --unix-socket ./pl-ebs.sock http://localhost/health
 ```
+
+### Contribution
+Non-exhaustive list of future improvements to be developed:
+- [ ] Any number of ECS tasks can be attached to the same EBS volume, provided they reside in the same EC2 instance
