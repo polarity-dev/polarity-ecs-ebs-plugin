@@ -95,10 +95,44 @@ func getMountpoint(device string) (string, error) {
 	return "", nil
 }
 
+// waitForBlockDevice blocks until the device is readable: after an attach the /dev
+// node can appear before the kernel has brought the device online.
+func waitForBlockDevice(device string, timeout time.Duration) error {
+	if !strings.HasPrefix(device, "/dev") {
+		device = "/dev/" + device
+	}
+
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		f, err := os.OpenFile(device, os.O_RDONLY, 0)
+		if err != nil {
+			lastErr = err
+			time.Sleep(500 * time.Millisecond)
+			continue
+		}
+		buf := make([]byte, 512)
+		_, rerr := f.Read(buf)
+		f.Close()
+		if rerr == nil {
+			log.Printf("Device %s is readable and ready", device)
+			return nil
+		}
+		lastErr = rerr
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	return fmt.Errorf("device %s not readable within %s: %v", device, timeout, lastErr)
+}
+
 func Mount(volumeID string) error {
 	device, err := FindDeviceByVolumeID(volumeID)
 	if err != nil {
 		return fmt.Errorf("error finding device: %v", err)
+	}
+
+	if err := waitForBlockDevice(device, 20*time.Second); err != nil {
+		return fmt.Errorf("device not ready after attach: %v", err)
 	}
 
 	filesystem, err := GetFilesystem(device)

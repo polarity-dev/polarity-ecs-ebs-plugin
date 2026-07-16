@@ -109,7 +109,7 @@ IAM Policy example. This should be applied to the IAM Role of the EC2 instances 
             "Effect": "Allow",
             "Resource": "*"
         },
-				{
+        {
             "Sid": "DockerPluginWrite",
             "Action": [
                 "ec2:DetachVolume",
@@ -117,14 +117,30 @@ IAM Policy example. This should be applied to the IAM Role of the EC2 instances 
             ],
             "Effect": "Allow",
             "Resource": "<volume_arn>"
+        },
+        {
+            "Sid": "DockerPluginTakeover",
+            "Action": [
+                "ecs:StopTask"
+            ],
+            "Effect": "Allow",
+            "Resource": "*"
         }
     ]
 }
 ```
 
+> `ecs:StopTask` is needed for the volume takeover (see Notes). Without it the plugin stays on the legacy non-force path and never force-detaches a possibly-live volume.
+
 
 ## Notes
 When the task dies or is terminated by ECS, the volume is NOT automatically detached from the EC2: this is intentional to spin up a new instance of the container faster in case of failure or ECS service update.
+
+### Volume takeover on mount
+
+`Mount` gates container startup, so the plugin is the single point of control over who touches the volume. This makes `deployment_maximum_percent = 200` safe (ECS may schedule a second task, but it can't write until the plugin lets it) while staying compatible with `100`.
+
+On `Mount`, before attaching locally, the plugin stops every other task whose container may still be live on the volume (`lastStatus` RUNNING/DEACTIVATING/STOPPING) and waits for `STOPPED`. The task being mounted is pre-`RUNNING`, so it is never stopped. It then detaches the volume from the instance that holds it — non-force if that instance is healthy, force if it's unreachable — and waits for the block device to be readable before mounting (the `/dev` node can appear before the kernel has the device online). If even the force-detach can't free the volume, the plugin fails the mount and lets ECS retry; terminating the stuck instance is left to a human. Assumes `desired_count = 1`.
 
 ## Development instructions
 

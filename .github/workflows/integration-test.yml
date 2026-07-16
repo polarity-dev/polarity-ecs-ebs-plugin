@@ -1,0 +1,80 @@
+name: Integration test
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment_maximum_percent:
+        description: "ECS service deployment_maximum_percent"
+        type: choice
+        options: ["200", "100"]
+        default: "200"
+      grant_stop_task:
+        description: "Grant ecs:StopTask to the instance role (off = test fail-safe)"
+        type: boolean
+        default: true
+
+concurrency: integration-test
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_DIR: test/integration
+  AWS_REGION: ${{ secrets.AWS_TEST_REGION }}
+
+jobs:
+  integration-test:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.5"
+
+      - name: Build plugin (arm64)
+        run: make tar-arm64 COMMIT_HASH=$(echo "${GITHUB_SHA}" | cut -c1-7)
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.OIDC_TEST_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Install session-manager-plugin
+        run: |
+          curl -s "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/ubuntu_arm64/session-manager-plugin.deb" -o smp.deb
+          sudo dpkg -i smp.deb
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform init -input=false
+          terraform apply -auto-approve -input=false \
+            -var "aws_region=${{ env.AWS_REGION }}" \
+            -var "plugin_tarball_path=${{ github.workspace }}/polarity-ecs-ebs-plugin.arm64.tar.gz" \
+            -var "deployment_maximum_percent=${{ inputs.deployment_maximum_percent || '200' }}" \
+            -var "grant_stop_task=${{ inputs.grant_stop_task || 'true' }}"
+
+      - name: Run scenarios
+        working-directory: ${{ env.TF_DIR }}
+        run: ./run-tests.sh
+
+      - name: Terraform destroy
+        if: always()
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform destroy -auto-approve -input=false \
+            -var "aws_region=${{ env.AWS_REGION }}" \
+            -var "plugin_tarball_path=${{ github.workspace }}/polarity-ecs-ebs-plugin.arm64.tar.gz" \
+            -var "deployment_maximum_percent=${{ inputs.deployment_maximum_percent || '200' }}" \
+            -var "grant_stop_task=${{ inputs.grant_stop_task || 'true' }}"

@@ -28,6 +28,10 @@ type MountResponse struct {
 var Debug string = "false"
 var CommitHash string = "unknown"
 
+// Gates the last-resort "terminate the holder" fallback. Off: automating instance
+// termination from a volume driver is too broad a blast radius, so a human does it.
+var canTerminateInstances = false
+
 func main() {
 	if Debug == "true" {
 		logFile, err := os.OpenFile("/logging/polarity-ecs-ebs.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -156,36 +160,114 @@ func main() {
 			return
 		}
 
-		checkVolRes, checkVolErr := internal.CheckForTasksWithVolumeInUse(req.Name, meta.Region, meta.AvailabilityZone)
-		switch checkVolRes {
-		case internal.OK:
-			log.Printf("Volume %s is not in use by any ECS tasks", req.Name)
-		case internal.ProcessingError:
-			response := MountResponse{Err: fmt.Sprintf("Error checking volume usage: %v", checkVolErr), MountPoint: ""}
-			json.NewEncoder(w).Encode(response)
-			return
-		default:
-			response := MountResponse{Err: fmt.Sprintf("Volume %s is in use by ECS tasks", req.Name), MountPoint: ""}
+		checkResult := internal.CheckForTasksWithVolumeInUse(req.Name, meta.Region, meta.AvailabilityZone)
+		if checkResult.Status == internal.ProcessingError {
+			response := MountResponse{Err: fmt.Sprintf("Error checking volume usage: %v", checkResult.Err), MountPoint: ""}
 			json.NewEncoder(w).Encode(response)
 			return
 		}
 
-		// attach the volume using aws sdk
-		if vol.State == types.VolumeStateInUse && vol.Attachments[0].InstanceId != nil && *vol.Attachments[0].InstanceId != meta.InstanceID {
-			log.Printf("Volume %s is in-use by another instance (%s), detaching...", req.Name, *vol.Attachments[0].InstanceId)
+		// Stop every other task whose container may still be live on the volume before
+		// mounting it here.
+		forceDetachNeeded := false
+		stopNotPermitted := false
+		candidates := internal.StopCandidates(checkResult.Tasks)
+		if len(candidates) > 0 {
+			log.Printf("Volume %s: %d live task(s) using it, stopping them before takeover", req.Name, len(candidates))
 
-			_, err := internal.DetachVolume(r.Context(), client, req.Name, *vol.Attachments[0].InstanceId)
+			for _, task := range candidates {
+				log.Printf("Stopping conflicting task %s (instance: %s, last: %s)", task.TaskArn, task.InstanceID, task.Status)
+				stopErr := internal.StopTask(meta.Region, task.ClusterArn, task.TaskArn)
+				if stopErr == nil {
+					continue
+				}
+				log.Printf("StopTask failed for %s: %v", task.TaskArn, stopErr)
+
+				// No ecs:StopTask permission: stay on the legacy non-force path and never
+				// force-detach a possibly-live volume (same as the old plugin).
+				if internal.IsAuthorizationError(stopErr) {
+					log.Printf("StopTask not permitted (grant ecs:StopTask to enable takeover) — staying on non-force detach")
+					stopNotPermitted = true
+				}
+
+				// Can't stop a live task on our own instance: unsafe to take over.
+				if task.InstanceID == meta.InstanceID {
+					response := MountResponse{Err: fmt.Sprintf("Cannot mount: local task %s (last=%s) could not be stopped: %v", task.TaskArn, task.Status, stopErr), MountPoint: ""}
+					json.NewEncoder(w).Encode(response)
+					return
+				}
+
+				// Stop failed on another, unreachable instance → force detach, but only
+				// if we actually have the permission to stop (otherwise stay legacy).
+				if !stopNotPermitted {
+					forceDetachNeeded = true
+				}
+			}
+
+			vol, err = internal.DescribeVolume(r.Context(), client, req.Name)
 			if err != nil {
-				response := MountResponse{Err: fmt.Sprintf("Failed to detach volume: %v", err), MountPoint: ""}
+				response := MountResponse{Err: fmt.Sprintf("Failed to describe volume after stop: %v", err), MountPoint: ""}
+				json.NewEncoder(w).Encode(response)
+				return
+			}
+		}
+
+		// Detach the volume from whichever instance still holds it: non-force if the
+		// holder was stopped cleanly, force if it's unreachable, terminate as last resort.
+		if vol.State == types.VolumeStateInUse && len(vol.Attachments) > 0 && vol.Attachments[0].InstanceId != nil && *vol.Attachments[0].InstanceId != meta.InstanceID {
+			attachedInstance := *vol.Attachments[0].InstanceId
+			detached := false
+
+			if !forceDetachNeeded {
+				log.Printf("Volume %s in-use by %s, attempting non-force detach...", req.Name, attachedInstance)
+				if _, derr := internal.DetachVolume(r.Context(), client, req.Name, attachedInstance); derr != nil {
+					log.Printf("Non-force detach call failed: %v", derr)
+				} else if _, werr := internal.WaitVolumeTimeout(r.Context(), client, req.Name, types.VolumeStateAvailable, 30*time.Second); werr != nil {
+					log.Printf("Volume not available after non-force detach: %v — escalating to force", werr)
+				} else {
+					detached = true
+				}
+			}
+
+			// Without ecs:StopTask we stay on the legacy path: never force-detach a
+			// possibly-live volume. Fail here; ECS retries until the old task is gone.
+			if !detached && stopNotPermitted {
+				response := MountResponse{Err: fmt.Sprintf("Volume %s not released by non-force detach; force-detach disabled without ecs:StopTask", req.Name), MountPoint: ""}
 				json.NewEncoder(w).Encode(response)
 				return
 			}
 
-			log.Printf("Successfully detached volume %s, waiting to be available", req.Name)
-			// NOTE: This overrides the previous volume state check
-			vol, err = internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateAvailable)
+			if !detached {
+				log.Printf("Force-detaching volume %s from %s...", req.Name, attachedInstance)
+				if _, derr := internal.DetachVolumeWithForce(r.Context(), client, req.Name, attachedInstance, true); derr != nil {
+					log.Printf("Force detach call failed: %v", derr)
+				}
+				if _, werr := internal.WaitVolumeTimeout(r.Context(), client, req.Name, types.VolumeStateAvailable, 60*time.Second); werr != nil {
+					// Force-detach didn't free the volume. Terminating the holder is a last
+					// resort gated behind canTerminateInstances (off: too broad a blast radius
+					// to automate); otherwise fail and let ECS retry / a human step in.
+					if !canTerminateInstances {
+						response := MountResponse{Err: fmt.Sprintf("Volume %s still not available after force detach: %v (manual intervention required on %s)", req.Name, werr, attachedInstance), MountPoint: ""}
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					log.Printf("Volume still not available after force detach: %v — terminating instance %s", werr, attachedInstance)
+					if termErr := internal.TerminateInstance(meta.Region, attachedInstance); termErr != nil {
+						response := MountResponse{Err: fmt.Sprintf("All recovery attempts failed: force-detach err=%v, terminate err=%v", werr, termErr), MountPoint: ""}
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+					if _, werr2 := internal.WaitVolume(r.Context(), client, req.Name, types.VolumeStateAvailable); werr2 != nil {
+						response := MountResponse{Err: fmt.Sprintf("Volume not available after terminating instance %s: %v", attachedInstance, werr2), MountPoint: ""}
+						json.NewEncoder(w).Encode(response)
+						return
+					}
+				}
+			}
+
+			vol, err = internal.DescribeVolume(r.Context(), client, req.Name)
 			if err != nil {
-				response := MountResponse{Err: fmt.Sprintf("Failed to wait for volume to be available: %v", err), MountPoint: ""}
+				response := MountResponse{Err: fmt.Sprintf("Failed to describe volume after detach: %v", err), MountPoint: ""}
 				json.NewEncoder(w).Encode(response)
 				return
 			}
