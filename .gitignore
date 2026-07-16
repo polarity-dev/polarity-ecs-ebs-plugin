@@ -3,3 +3,7 @@ build/
 *.tar.gz
 *.sock
 dist/
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*

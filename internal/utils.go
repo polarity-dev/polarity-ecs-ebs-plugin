@@ -67,18 +67,32 @@ func AttachVolume(ctx context.Context, client *ec2.Client, volumeID string, inst
 	return ebs, nil
 }
 
-// detachVolume detaches a volume from the EC2 instance.
+// DetachVolume detaches a volume from the EC2 instance.
 func DetachVolume(ctx context.Context, client *ec2.Client, volumeID, instanceID string) (*ec2.DetachVolumeOutput, error) {
+	return DetachVolumeWithForce(ctx, client, volumeID, instanceID, false)
+}
+
+// DetachVolumeWithForce detaches a volume; force=true works even if the instance is unreachable.
+func DetachVolumeWithForce(ctx context.Context, client *ec2.Client, volumeID, instanceID string, force bool) (*ec2.DetachVolumeOutput, error) {
 	commandDetach := &ec2.DetachVolumeInput{
 		InstanceId: aws.String(instanceID),
 		VolumeId:   aws.String(volumeID),
+		Force:      aws.Bool(force),
 	}
 	ebs, err := client.DetachVolume(ctx, commandDetach)
 	if err != nil {
-		return nil, fmt.Errorf("failed to detach volume: %w", err)
+		return nil, fmt.Errorf("failed to detach volume (force=%v): %w", force, err)
 	}
 
 	return ebs, nil
+}
+
+// WaitVolumeTimeout is WaitVolume bounded by a timeout, so a detach against an
+// unreachable instance (accepted by AWS but never completing) doesn't hang forever.
+func WaitVolumeTimeout(ctx context.Context, client *ec2.Client, volumeID string, state types.VolumeState, timeout time.Duration) (*types.Volume, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return WaitVolume(ctx, client, volumeID, state)
 }
 
 // waitVolume waits for a volume to reach a specific state.
